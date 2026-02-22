@@ -261,7 +261,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 		var pipelineFile = "essential/pipeline_with_max_active_runs.yaml"
 		var pipelineDir = "valid"
 
-		It("Test 1: > MaxParallelism runs of a single pipeline version - only MaxParallelism runs should be active", func() {
+		It("MaxParallelism runs of a single pipeline version - only MaxParallelism runs should be active", func() {
 			pipelineFilePath := filepath.Join(testutil.GetPipelineFilesDir(), pipelineDir, pipelineFile)
 			limit, err := e2e_utils.MaxActiveRuns(pipelineFilePath)
 			Expect(err).NotTo(HaveOccurred(), "Pipeline should have max_active_runs configured")
@@ -290,7 +290,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			e2e_utils.ValidateParallelismAcrossRuns(runClient, runInfos, versionLimitMap, maxPipelineWaitTime)
 		})
 
-		It("Test 2: > MaxParallelism runs of a single pipeline but with different versions - all runs should be active", func() {
+		It("MaxParallelism runs of a single pipeline but with different versions - all runs should be active", func() {
 			pipelineFilePath := filepath.Join(testutil.GetPipelineFilesDir(), pipelineDir, pipelineFile)
 			limit, err := e2e_utils.MaxActiveRuns(pipelineFilePath)
 			Expect(err).NotTo(HaveOccurred(), "Pipeline should have max_active_runs configured")
@@ -337,7 +337,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			e2e_utils.ValidateParallelismAcrossRuns(runClient, runInfos, versionLimitMap, maxPipelineWaitTime)
 		})
 
-		It("Test 3: > MaxParallelism runs, mix of single pipeline with different versions + same version - only MaxParallelism runs off the same version should be allowed but all runs from different versions should be allowed", func() {
+		It("MaxParallelism runs, mix of single pipeline with different versions + same version - only MaxParallelism runs off the same version should be allowed but all runs from different versions should be allowed", func() {
 			pipelineFilePath := filepath.Join(testutil.GetPipelineFilesDir(), pipelineDir, pipelineFile)
 			limit, err := e2e_utils.MaxActiveRuns(pipelineFilePath)
 			Expect(err).NotTo(HaveOccurred(), "Pipeline should have max_active_runs configured")
@@ -398,7 +398,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			e2e_utils.ValidateParallelismAcrossRuns(runClient, runInfos, versionLimitMap, maxPipelineWaitTime)
 		})
 
-		It("Test 4: > MaxParallelism runs different pipelines - all runs should be allowed", func() {
+		It("MaxParallelism runs different pipelines - all runs should be allowed", func() {
 			pipelineFilePath := filepath.Join(testutil.GetPipelineFilesDir(), pipelineDir, pipelineFile)
 			limit, err := e2e_utils.MaxActiveRuns(pipelineFilePath)
 			Expect(err).NotTo(HaveOccurred(), "Pipeline should have max_active_runs configured")

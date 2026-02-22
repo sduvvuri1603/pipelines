@@ -708,7 +708,10 @@ func (c *Controller) extractMaxActiveRunsFromWorkflow(ctx context.Context, workf
 	}
 
 	if c.tokenSrc != nil {
-		if token, err := c.tokenSrc.Token(); err == nil {
+		token, err := c.tokenSrc.Token()
+		if err != nil {
+			log.Warnf("Failed to get token for pipeline version lookup: %v", err)
+		} else {
 			ctx = metadata.AppendToOutgoingContext(ctx, "Authorization", "Bearer "+token.AccessToken)
 		}
 	}

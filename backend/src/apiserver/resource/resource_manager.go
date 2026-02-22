@@ -170,7 +170,7 @@ func extractMaxActiveRuns(tmpl template.Template) (int32, error) {
 	// Type assertion: cast to V2Spec to access PlatformSpec()
 	v2Spec, ok := tmpl.(*template.V2Spec)
 	if !ok || v2Spec == nil {
-		return 0, nil
+		return 0, fmt.Errorf("expected V2 template to be *template.V2Spec")
 	}
 	value, okValue, err := v2Spec.MaxActiveRuns()
 	if err != nil {

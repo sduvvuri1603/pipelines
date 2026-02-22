@@ -821,11 +821,7 @@ func (s *RunStore) GetRunNamespacesForPipelineVersion(pipelineVersionID string) 
 	if err != nil {
 		return nil, util.NewInternalServerError(err, "Failed to query distinct namespaces for pipeline version %s: %v", pipelineVersionID, err)
 	}
-	defer func() {
-		if closeErr := rows.Close(); closeErr != nil && err == nil {
-			err = util.NewInternalServerError(closeErr, "Failed to close rows: %v", closeErr)
-		}
-	}()
+	defer rows.Close()
 
 	namespaces = []string{}
 	for rows.Next() {
