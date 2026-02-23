@@ -28,6 +28,7 @@ import (
 	"github.com/kubeflow/pipelines/backend/api/v2beta1/go_http_client/recurring_run_model"
 	run_params "github.com/kubeflow/pipelines/backend/api/v2beta1/go_http_client/run_client/run_service"
 	"github.com/kubeflow/pipelines/backend/api/v2beta1/go_http_client/run_model"
+	apiserver "github.com/kubeflow/pipelines/backend/src/common/client/api_server/v2"
 	workflowutils "github.com/kubeflow/pipelines/backend/test/compiler/utils"
 	"github.com/kubeflow/pipelines/backend/test/config"
 	. "github.com/kubeflow/pipelines/backend/test/constants"
@@ -45,6 +46,66 @@ import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+func collectRunInfos(runClient *apiserver.RunClient, experimentID *string, testContext *apitests.TestContext, recurringRunID string, targetRuns int) ([]e2e_utils.RunInfo, error) {
+	GinkgoHelper()
+	if experimentID == nil {
+		return nil, fmt.Errorf("experimentID cannot be nil")
+	}
+	if testContext == nil {
+		return nil, fmt.Errorf("test context cannot be nil")
+	}
+
+	runInfos := make([]e2e_utils.RunInfo, 0, targetRuns)
+	seen := make(map[string]struct{})
+	var collectErr error
+
+	Eventually(func() bool {
+		runs, _, _, err := runClient.List(&run_params.RunServiceListRunsParams{
+			ExperimentID: experimentID,
+		})
+		if err != nil {
+			if collectErr == nil {
+				collectErr = fmt.Errorf("failed to list runs for recurring run %s: %w", recurringRunID, err)
+			}
+			return false
+		}
+
+		for _, run := range runs {
+			if run.RecurringRunID == "" || run.RecurringRunID != recurringRunID {
+				continue
+			}
+			if _, exists := seen[run.RunID]; exists {
+				continue
+			}
+			if run.PipelineVersionReference == nil || run.PipelineVersionReference.PipelineID == "" || run.PipelineVersionReference.PipelineVersionID == "" {
+				if collectErr == nil {
+					collectErr = fmt.Errorf("run %s missing pipeline version reference", run.RunID)
+				}
+				return false
+			}
+
+			seen[run.RunID] = struct{}{}
+			runInfos = append(runInfos, e2e_utils.RunInfo{
+				RunID:             run.RunID,
+				PipelineID:        run.PipelineVersionReference.PipelineID,
+				PipelineVersionID: run.PipelineVersionReference.PipelineVersionID,
+			})
+			testContext.PipelineRun.CreatedRunIds = append(testContext.PipelineRun.CreatedRunIds, run.RunID)
+		}
+
+		return len(runInfos) >= targetRuns
+	}, 6*time.Minute, 5*time.Second).Should(BeTrue(), "Expected recurring run %s to create at least %d runs", recurringRunID, targetRuns)
+
+	if collectErr != nil {
+		return nil, collectErr
+	}
+	if len(runInfos) > targetRuns {
+		runInfos = runInfos[:targetRuns]
+	}
+
+	return runInfos, nil
+}
 
 var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func() {
 	var testContext *apitests.TestContext
@@ -463,53 +524,6 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			}
 		}
 
-		collectRunInfos := func(recurringRunID string, fallbackPipelineID string, fallbackPipelineVersionID string, targetRuns int) []e2e_utils.RunInfo {
-			runInfos := make([]e2e_utils.RunInfo, 0, targetRuns)
-			seen := make(map[string]struct{})
-
-			Eventually(func() bool {
-				runs, _, _, err := runClient.List(&run_params.RunServiceListRunsParams{
-					ExperimentID: experimentID,
-				})
-				Expect(err).To(BeNil(), "Failed to list runs for recurring run %s", recurringRunID)
-
-				for _, run := range runs {
-					if run.RecurringRunID == "" || run.RecurringRunID != recurringRunID {
-						continue
-					}
-					if _, exists := seen[run.RunID]; exists {
-						continue
-					}
-
-					pipelineID := fallbackPipelineID
-					if run.PipelineVersionReference != nil && run.PipelineVersionReference.PipelineID != "" {
-						pipelineID = run.PipelineVersionReference.PipelineID
-					}
-
-					pipelineVersionID := fallbackPipelineVersionID
-					if run.PipelineVersionReference != nil && run.PipelineVersionReference.PipelineVersionID != "" {
-						pipelineVersionID = run.PipelineVersionReference.PipelineVersionID
-					}
-
-					seen[run.RunID] = struct{}{}
-					runInfos = append(runInfos, e2e_utils.RunInfo{
-						RunID:             run.RunID,
-						PipelineID:        pipelineID,
-						PipelineVersionID: pipelineVersionID,
-					})
-					testContext.PipelineRun.CreatedRunIds = append(testContext.PipelineRun.CreatedRunIds, run.RunID)
-				}
-
-				return len(runInfos) >= targetRuns
-			}, 6*time.Minute, 5*time.Second).Should(BeTrue(), "Expected recurring run %s to create at least %d runs", recurringRunID, targetRuns)
-
-			if len(runInfos) > targetRuns {
-				runInfos = runInfos[:targetRuns]
-			}
-
-			return runInfos
-		}
-
 		It("Recurring run referencing pipeline ID only respects max_active_runs", func() {
 			pipelineFilePath := filepath.Join(testutil.GetPipelineFilesDir(), pipelineDir, pipelineFile)
 			limit, err := e2e_utils.MaxActiveRuns(pipelineFilePath)
@@ -522,6 +536,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			latestVersion := testutil.GetLatestPipelineVersion(pipelineClient, &uploadedPipeline.PipelineID)
 			Expect(latestVersion.PipelineVersionID).NotTo(BeEmpty(), "Expected latest pipeline version to have an ID")
 
+			// Clamp to a reasonable positive range to keep the test stable.
 			effectiveLimit := int64(limit)
 			if effectiveLimit < 1 {
 				effectiveLimit = 1
@@ -551,7 +566,8 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			testContext.RecurringRun.CreatedRecurringRunIds = append(testContext.RecurringRun.CreatedRecurringRunIds, recurringRun.RecurringRunID)
 
 			targetRuns := int(limit)
-			runInfos := collectRunInfos(recurringRun.RecurringRunID, uploadedPipeline.PipelineID, latestVersion.PipelineVersionID, targetRuns)
+			runInfos, err := collectRunInfos(runClient, experimentID, testContext, recurringRun.RecurringRunID, targetRuns)
+			Expect(err).NotTo(HaveOccurred(), "Failed to collect run infos for recurring run %s", recurringRun.RecurringRunID)
 
 			versionLimitMap := make(map[string]int32)
 			for _, info := range runInfos {
@@ -569,7 +585,6 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			limit, err := e2e_utils.MaxActiveRuns(pipelineFilePath)
 			Expect(err).NotTo(HaveOccurred(), "Pipeline should have max_active_runs configured")
 			Expect(limit).To(BeNumerically(">", 0), "max_active_runs should be greater than 0")
-			Expect(limit).To(BeNumerically(">", 0), "max_active_runs should be greater than 0")
 
 			specTemplate := testutil.ParseFileToSpecs(pipelineFilePath, false, nil)
 			Expect(specTemplate).NotTo(BeNil(), "Failed to parse pipeline spec template")
@@ -578,6 +593,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			Expect(err).NotTo(HaveOccurred(), "Failed to marshal pipeline spec")
 			Expect(protojson.Unmarshal(specBytes, pipelineSpec)).To(Succeed(), "Failed to unmarshal pipeline spec")
 
+			// Clamp to a reasonable positive range to keep the test stable.
 			effectiveLimit := int64(limit)
 			if effectiveLimit < 1 {
 				effectiveLimit = 1
@@ -605,7 +621,8 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			testContext.RecurringRun.CreatedRecurringRunIds = append(testContext.RecurringRun.CreatedRecurringRunIds, recurringRun.RecurringRunID)
 
 			targetRuns := int(limit)
-			runInfos := collectRunInfos(recurringRun.RecurringRunID, "", "", targetRuns)
+			runInfos, err := collectRunInfos(runClient, experimentID, testContext, recurringRun.RecurringRunID, targetRuns)
+			Expect(err).NotTo(HaveOccurred(), "Failed to collect run infos for recurring run %s", recurringRun.RecurringRunID)
 
 			versionLimitMap := make(map[string]int32)
 			for _, info := range runInfos {

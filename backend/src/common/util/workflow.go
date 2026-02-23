@@ -875,9 +875,12 @@ func (wc *WorkflowClient) Compare(old, new interface{}) bool {
 	return newWorkflow.ResourceVersion != oldWorkflow.ResourceVersion
 }
 
-func (wc *WorkflowClient) OnDeletePipelineVersion(pipelineVersionID string, namespaces []string) {
-	if pipelineVersionID == "" || len(namespaces) == 0 {
-		return
+func (wc *WorkflowClient) OnDeletePipelineVersion(pipelineVersionID string, namespaces []string) error {
+	if pipelineVersionID == "" {
+		return fmt.Errorf("pipeline version ID cannot be empty")
+	}
+	if len(namespaces) == 0 {
+		return nil
 	}
 	// Clean up ConfigMap entries asynchronously to avoid blocking
 	go func() {
@@ -899,6 +902,7 @@ func (wc *WorkflowClient) OnDeletePipelineVersion(pipelineVersionID string, name
 			}
 		}
 	}()
+	return nil
 }
 
 func deletePipelineParallelismConfigMapEntry(ctx context.Context, configMaps v1.ConfigMapInterface, namespace, key string) error {
@@ -957,8 +961,11 @@ func (wfi *WorkflowInterface) Create(ctx context.Context, execution ExecutionSpe
 // EnsurePipelineParallelismConfigMap ensures the ConfigMap entry tracking max_active_runs is present.
 // It parses the pipeline version annotations and upserts the corresponding semaphore counter.
 func EnsurePipelineParallelismConfigMap(ctx context.Context, configMaps v1.ConfigMapInterface, namespace string, annotations map[string]string) error {
-	if configMaps == nil || annotations == nil {
-		return nil
+	if configMaps == nil {
+		return fmt.Errorf("configMaps client cannot be nil")
+	}
+	if annotations == nil {
+		return fmt.Errorf("annotations cannot be nil")
 	}
 
 	pipelineVersionID := annotations[AnnotationKeyPipelineVersionID]

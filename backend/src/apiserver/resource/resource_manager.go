@@ -1897,7 +1897,9 @@ func (r *ResourceManager) DeletePipelineVersion(pipelineVersionId string) error 
 				glog.Warningf("Context canceled or timed out before cleanup for pipeline version %s: %v", pipelineVersionId, ctx.Err())
 				return
 			}
-			r.execClient.OnDeletePipelineVersion(pipelineVersionId, namespaces)
+			if err := r.execClient.OnDeletePipelineVersion(pipelineVersionId, namespaces); err != nil {
+				glog.Warningf("Failed to trigger engine cleanup for pipeline version %s: %v", pipelineVersionId, err)
+			}
 		}()
 	}()
 

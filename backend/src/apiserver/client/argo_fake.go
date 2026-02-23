@@ -48,8 +48,9 @@ func (c *FakeExecClient) Compare(old, new interface{}) bool {
 	return false
 }
 
-func (c *FakeExecClient) OnDeletePipelineVersion(string, []string) {
+func (c *FakeExecClient) OnDeletePipelineVersion(string, []string) error {
 	// No-op for fake client
+	return nil
 }
 
 func (c *FakeExecClient) GetWorkflowCount() int {
@@ -99,6 +100,7 @@ func (c *FakeExecClientWithBadWorkflow) Compare(old, new interface{}) bool {
 	return false
 }
 
-func (c *FakeExecClientWithBadWorkflow) OnDeletePipelineVersion(string, []string) {
+func (c *FakeExecClientWithBadWorkflow) OnDeletePipelineVersion(string, []string) error {
 	// No-op for fake client
+	return nil
 }

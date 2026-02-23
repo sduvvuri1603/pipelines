@@ -100,8 +100,12 @@ func (t *V2Spec) MaxActiveRuns() (int32, bool, error) {
 		return 0, false, nil
 	}
 	value := pipelineConfig.GetMaxActiveRuns()
-	if value <= 0 {
-		return 0, false, fmt.Errorf("max_active_runs must be greater than 0, got %d", value)
+	if value == 0 {
+		// Zero means no concurrency limit.
+		return 0, false, nil
+	}
+	if value < 0 {
+		return 0, false, fmt.Errorf("max_active_runs must be >= 0, got %d", value)
 	}
 	return value, true, nil
 }

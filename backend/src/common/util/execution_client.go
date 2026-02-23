@@ -39,7 +39,7 @@ type ExecutionClient interface {
 	Compare(old, new interface{}) bool
 	// OnDeletePipelineVersion is called when a pipeline version is deleted to perform engine-specific cleanup.
 	// namespaces is the list of namespaces where runs of this pipeline version exist.
-	OnDeletePipelineVersion(pipelineVersionID string, namespaces []string)
+	OnDeletePipelineVersion(pipelineVersionID string, namespaces []string) error
 }
 
 // Mini version of ExecutionSpec informer
