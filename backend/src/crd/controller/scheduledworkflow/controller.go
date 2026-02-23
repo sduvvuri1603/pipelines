@@ -89,6 +89,7 @@ var (
 
 // Controller is the controller implementation for ScheduledWorkflow resources
 type Controller struct {
+	kubeClientSet  kubernetes.Interface
 	kubeClient     *client.KubeClient
 	swfClient      *client.ScheduledWorkflowClient
 	workflowClient *client.WorkflowClient
@@ -141,6 +142,7 @@ func NewController(
 	recorder := eventBroadcaster.NewRecorder(scheme.Scheme, corev1.EventSource{Component: util.ControllerAgentName})
 
 	controller := &Controller{
+		kubeClientSet:  kubeClientSet,
 		kubeClient:     client.NewKubeClient(kubeClientSet, recorder),
 		swfClient:      client.NewScheduledWorkflowClient(swfClientSet, swfInformer),
 		runClient:      runClient,
@@ -598,6 +600,17 @@ func (c *Controller) submitNewWorkflowIfNotAlreadySubmitted(
 					workflow.ExecutionObjectMeta().Annotations = make(map[string]string)
 				}
 				workflow.ExecutionObjectMeta().Annotations[commonutil.AnnotationKeyMaxActiveRuns] = fmt.Sprintf("%d", maxActiveRuns)
+				if c.kubeClientSet == nil {
+					return false, "", fmt.Errorf("kube client not configured for pipeline parallelism ConfigMap updates")
+				}
+				if err := commonutil.EnsurePipelineParallelismConfigMap(
+					ctx,
+					c.kubeClientSet.CoreV1().ConfigMaps(swf.Namespace),
+					swf.Namespace,
+					workflow.ExecutionObjectMeta().Annotations,
+				); err != nil {
+					return false, "", err
+				}
 			}
 		}
 		createdWorkflow, err := c.workflowClient.Create(ctx, swf.Namespace, newWorkflow)
@@ -678,16 +691,6 @@ func (c *Controller) extractMaxActiveRunsFromWorkflow(ctx context.Context, workf
 		}
 		workflow.ExecutionObjectMeta().Annotations[commonutil.AnnotationKeyPipelineVersionID] = id
 	}
-	if workflow.ExecutionObjectMeta().Annotations != nil {
-		if rawValue, ok := workflow.ExecutionObjectMeta().Annotations[commonutil.AnnotationKeyMaxActiveRuns]; ok && rawValue != "" {
-			parsed, err := strconv.ParseInt(rawValue, 10, 32)
-			if err != nil || parsed <= 0 {
-				return 0, fmt.Errorf("invalid max_active_runs annotation %q: %v", rawValue, err)
-			}
-			return int32(parsed), nil
-		}
-	}
-
 	if workflow.Spec.Synchronization == nil {
 		// No concurrency limit configured; nothing to enforce.
 		return 0, nil
@@ -711,6 +714,17 @@ func (c *Controller) extractMaxActiveRunsFromWorkflow(ctx context.Context, workf
 	if pipelineVersionID == "" {
 		// The workflow does not reference the parallelism semaphore; no limit applies.
 		return 0, nil
+	}
+
+	if workflow.ExecutionObjectMeta().Annotations != nil {
+		if rawValue, ok := workflow.ExecutionObjectMeta().Annotations[commonutil.AnnotationKeyMaxActiveRuns]; ok && rawValue != "" {
+			parsed, err := strconv.ParseInt(rawValue, 10, 32)
+			if err != nil || parsed <= 0 {
+				return 0, fmt.Errorf("invalid max_active_runs annotation %q: %v", rawValue, err)
+			}
+			annotatePipelineVersion(pipelineVersionID)
+			return int32(parsed), nil
+		}
 	}
 
 	if c.pipelineClient == nil || pipelineID == "" {
