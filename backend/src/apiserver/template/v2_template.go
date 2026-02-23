@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -176,6 +177,20 @@ func (t *V2Spec) ScheduledWorkflow(modelJob *model.Job) (*scheduledworkflow.Sche
 	}
 	// Disable istio sidecar injection if not specified
 	executionSpec.SetAnnotationsToAllTemplatesIfKeyNotExist(util.AnnotationKeyIstioSidecarInject, util.AnnotationValueIstioSidecarInjectDisabled)
+
+	maxActiveRuns, hasMaxActiveRuns, err := t.MaxActiveRuns()
+	if err != nil {
+		return nil, util.Wrap(err, "failed to extract max_active_runs")
+	}
+	if hasMaxActiveRuns {
+		if executionSpec.ExecutionObjectMeta().Annotations == nil {
+			executionSpec.ExecutionObjectMeta().Annotations = make(map[string]string)
+		}
+		executionSpec.ExecutionObjectMeta().Annotations[util.AnnotationKeyMaxActiveRuns] = strconv.Itoa(int(maxActiveRuns))
+		if modelJob.PipelineVersionId != "" {
+			executionSpec.ExecutionObjectMeta().Annotations[util.AnnotationKeyPipelineVersionID] = modelJob.PipelineVersionId
+		}
+	}
 	parameters, err := StringMapToCRDParameters(string(modelJob.RuntimeConfig.Parameters))
 	if err != nil {
 		return nil, util.Wrap(err, "Converting runtime config's parameters to CDR parameters failed")

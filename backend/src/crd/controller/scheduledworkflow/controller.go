@@ -17,6 +17,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	workflowapi "github.com/argoproj/argo-workflows/v3/pkg/apis/workflow/v1alpha1"
@@ -310,7 +311,6 @@ func (c *Controller) handleWorkflow(obj interface{}) {
 	log.WithFields(log.Fields{
 		Workflow: object.GetName(),
 	}).Infof("Processing object (%s): object has no owner.", object.GetName())
-	return
 }
 
 // processNextWorkItem will read a single work item off the workqueue and
@@ -678,6 +678,16 @@ func (c *Controller) extractMaxActiveRunsFromWorkflow(ctx context.Context, workf
 		}
 		workflow.ExecutionObjectMeta().Annotations[commonutil.AnnotationKeyPipelineVersionID] = id
 	}
+	if workflow.ExecutionObjectMeta().Annotations != nil {
+		if rawValue, ok := workflow.ExecutionObjectMeta().Annotations[commonutil.AnnotationKeyMaxActiveRuns]; ok && rawValue != "" {
+			parsed, err := strconv.ParseInt(rawValue, 10, 32)
+			if err != nil || parsed <= 0 {
+				return 0, fmt.Errorf("invalid max_active_runs annotation %q: %v", rawValue, err)
+			}
+			return int32(parsed), nil
+		}
+	}
+
 	if workflow.Spec.Synchronization == nil {
 		// No concurrency limit configured; nothing to enforce.
 		return 0, nil
