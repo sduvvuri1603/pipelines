@@ -16,6 +16,7 @@ package end2end
 
 import (
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -123,6 +124,31 @@ func MaxActiveRuns(pipelineFilePath string) (int32, error) {
 	return value, nil
 }
 
+func kubectlGetWorkflowField(namespace, workflowName, jsonPath string) string {
+	cmd := exec.Command("kubectl", "get", "workflows", "-n", namespace, workflowName, "-o", "jsonpath="+jsonPath)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logger.Log("Failed to get workflow field %s for %s: %v, output: %s", jsonPath, workflowName, err, strings.TrimSpace(string(output)))
+		return ""
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func logWorkflowSemaphoreInfo(runID string) {
+	namespace := testutil.GetNamespace()
+	workflowName := testutil.GetWorkflowNameByRunID(namespace, runID)
+	if workflowName == "" {
+		logger.Log("Debug semaphore: no workflow found for runID=%s", runID)
+		return
+	}
+	maxRuns := kubectlGetWorkflowField(namespace, workflowName, "{.metadata.annotations.pipelines\\.kubeflow\\.org/max_active_runs}")
+	pipelineVersionID := kubectlGetWorkflowField(namespace, workflowName, "{.metadata.annotations.pipelines\\.kubeflow\\.org/pipeline_version_id}")
+	semaphoreName := kubectlGetWorkflowField(namespace, workflowName, "{.spec.synchronization.semaphores[0].configMapKeyRef.name}")
+	semaphoreKey := kubectlGetWorkflowField(namespace, workflowName, "{.spec.synchronization.semaphores[0].configMapKeyRef.key}")
+	logger.Log("Debug semaphore: runID=%s workflow=%s max_active_runs=%s pipeline_version_id=%s semaphore_name=%s semaphore_key=%s",
+		runID, workflowName, maxRuns, pipelineVersionID, semaphoreName, semaphoreKey)
+}
+
 // ValidateWorkflowParallelismAcrossRuns launches multiple runs for the same pipeline version
 // and asserts that no more than the configured limit are active concurrently.
 func ValidateWorkflowParallelismAcrossRuns(runClient *apiserver.RunClient, testContext *apitests.TestContext, pipelineID string, pipelineVersionID string, experimentID *string, limit int32, maxPipelineWaitTime int) {
@@ -162,6 +188,11 @@ func ValidateWorkflowParallelismAcrossRuns(runClient *apiserver.RunClient, testC
 				allTerminal = false
 			default:
 				// terminal
+			}
+		}
+		if int32(active) > limit {
+			for _, rid := range runIDs {
+				logWorkflowSemaphoreInfo(rid)
 			}
 		}
 		Expect(active).To(BeNumerically("<=", limit), "Active concurrent runs should respect max_active_runs")
@@ -228,6 +259,13 @@ func ValidateParallelismAcrossRuns(runClient *apiserver.RunClient, runInfos []Ru
 		if len(activeByVersion) > 0 {
 			for versionID, activeCount := range activeByVersion {
 				if limit, hasLimit := versionLimitMap[versionID]; hasLimit {
+					if int32(activeCount) > limit {
+						for _, runInfo := range runInfos {
+							if runInfo.PipelineVersionID == versionID {
+								logWorkflowSemaphoreInfo(runInfo.RunID)
+							}
+						}
+					}
 					Expect(int32(activeCount)).To(BeNumerically("<=", limit),
 						fmt.Sprintf("Active concurrent runs for pipeline version %s should respect max_active_runs limit of %d, but found %d active", versionID, limit, activeCount))
 				}
