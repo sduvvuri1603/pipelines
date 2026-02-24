@@ -152,6 +152,9 @@ func (t *V2Spec) ScheduledWorkflow(modelJob *model.Job) (*scheduledworkflow.Sche
 			CacheDisabled:        t.templateOptions.CacheDisabled,
 			DefaultWorkspace:     t.templateOptions.DefaultWorkspace,
 			MLPipelineTLSEnabled: t.templateOptions.MLPipelineTLSEnabled,
+			DefaultRunAsUser:     t.templateOptions.DefaultRunAsUser,
+			DefaultRunAsGroup:    t.templateOptions.DefaultRunAsGroup,
+			DefaultRunAsNonRoot:  t.templateOptions.DefaultRunAsNonRoot,
 		}
 		if modelJob.PipelineVersionId != "" {
 			opts.PipelineVersionID = modelJob.PipelineVersionId
@@ -411,6 +414,9 @@ func (t *V2Spec) RunWorkflow(modelRun *model.Run, options RunWorkflowOptions) (u
 			DefaultWorkspace:     t.templateOptions.DefaultWorkspace,
 			MLPipelineTLSEnabled: t.templateOptions.MLPipelineTLSEnabled,
 			PipelineVersionID:    modelRun.PipelineVersionId,
+			DefaultRunAsUser:     t.templateOptions.DefaultRunAsUser,
+			DefaultRunAsGroup:    t.templateOptions.DefaultRunAsGroup,
+			DefaultRunAsNonRoot:  t.templateOptions.DefaultRunAsNonRoot,
 		}
 		obj, err = argocompiler.Compile(job, kubernetesSpec, opts)
 	}
@@ -527,6 +533,11 @@ func (t *V2Spec) validatePipelineJobInputs(job *pipelinespec.PipelineJob) error 
 					"invalid for root component", name)
 			default:
 				return util.NewInvalidInputError("input parameter %s requires type unknown", name)
+			}
+
+			// Validate against literal constraints if specified using shared helper
+			if err := util.ValidateLiteralParameter(name, input, param.GetLiterals()); err != nil {
+				return util.NewInvalidInputError("%s", err.Error())
 			}
 		}
 	}
