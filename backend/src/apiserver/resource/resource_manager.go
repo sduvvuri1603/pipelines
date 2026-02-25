@@ -1910,27 +1910,18 @@ func (r *ResourceManager) DeletePipelineVersion(pipelineVersionId string) error 
 		return util.Wrapf(err, "Failed to change the status of pipeline version id %v to DELETING", pipelineVersionId)
 	}
 
-	// Clean up engine-specific resources for this pipeline version asynchronously.
-	// This identifies all namespaces where runs of this pipeline version exist and delegates cleanup to the execution client.
-	defer func() {
+	// Query namespaces synchronously (DB access), then clean up engine-specific
+	// resources asynchronously (ConfigMap patches against Kubernetes API).
+	namespaces, nsErr := r.runStore.GetRunNamespacesForPipelineVersion(pipelineVersionId)
+	if nsErr != nil {
+		glog.Warningf("Failed to get namespaces for pipeline version %s during cleanup: %v", pipelineVersionId, nsErr)
+	} else if len(namespaces) > 0 {
 		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-			defer cancel()
-
-			namespaces, err := r.runStore.GetRunNamespacesForPipelineVersion(pipelineVersionId)
-			if err != nil {
-				glog.Warningf("Failed to get namespaces for pipeline version %s during cleanup: %v", pipelineVersionId, err)
-				return
-			}
-			if ctx.Err() != nil {
-				glog.Warningf("Context canceled or timed out before cleanup for pipeline version %s: %v", pipelineVersionId, ctx.Err())
-				return
-			}
 			if err := r.execClient.OnDeletePipelineVersion(pipelineVersionId, namespaces); err != nil {
 				glog.Warningf("Failed to trigger engine cleanup for pipeline version %s: %v", pipelineVersionId, err)
 			}
 		}()
-	}()
+	}
 
 	// Delete pipeline spec file and DB entry.
 	// Not fail the request if this step failed. A background run will do the cleanup.
