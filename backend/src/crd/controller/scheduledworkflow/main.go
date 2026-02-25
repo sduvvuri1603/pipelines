@@ -137,8 +137,6 @@ func main() {
 	}
 
 	runClient := api.NewRunServiceClient(apiConnection)
-	pipelineClient := api.NewPipelineServiceClient(apiConnection)
-
 	log.Info("Successfully connected to the API server")
 
 	controller, err := NewController(
@@ -146,7 +144,6 @@ func main() {
 		scheduleClient,
 		execClient,
 		runClient,
-		pipelineClient,
 		scheduleInformerFactory,
 		execInformer,
 		commonutil.NewRealTime(),
