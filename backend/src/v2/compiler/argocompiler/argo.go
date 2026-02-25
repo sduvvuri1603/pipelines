@@ -171,11 +171,11 @@ func Compile(jobArg *pipelinespec.PipelineJob, kubernetesSpecArg *pipelinespec.S
 			if opts == nil || opts.PipelineVersionID == "" {
 				return nil, fmt.Errorf("maxActiveRuns requires a pipeline version ID to enforce concurrency limits")
 			}
-			if wf.ObjectMeta.Annotations == nil {
-				wf.ObjectMeta.Annotations = make(map[string]string)
+			if wf.Annotations == nil {
+				wf.Annotations = make(map[string]string)
 			}
-			wf.ObjectMeta.Annotations[util.AnnotationKeyPipelineVersionID] = opts.PipelineVersionID
-			wf.ObjectMeta.Annotations[util.AnnotationKeyMaxActiveRuns] = fmt.Sprintf("%d", value)
+			wf.Annotations[util.AnnotationKeyPipelineVersionID] = opts.PipelineVersionID
+			wf.Annotations[util.AnnotationKeyMaxActiveRuns] = fmt.Sprintf("%d", value)
 			if wf.Spec.Synchronization == nil {
 				wf.Spec.Synchronization = &wfapi.Synchronization{}
 			}

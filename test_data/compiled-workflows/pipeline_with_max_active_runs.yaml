@@ -1,6 +1,9 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
+  annotations:
+    pipelines.kubeflow.org/max_active_runs: "2"
+    pipelines.kubeflow.org/pipeline_version_id: test-version-id
   creationTimestamp: null
   generateName: pipeline-with-max-active-runs-
 spec:
