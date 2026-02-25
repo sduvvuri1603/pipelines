@@ -684,7 +684,7 @@ func (c *Controller) extractMaxActiveRunsFromWorkflow(workflow *commonutil.Workf
 	}
 	parsed, err := strconv.ParseInt(rawValue, 10, 32)
 	if err != nil || parsed <= 0 {
-		return 0, fmt.Errorf("invalid max_active_runs annotation %q: %v", rawValue, err)
+		return 0, fmt.Errorf("invalid max_active_runs annotation %q: %w", rawValue, err)
 	}
 	return int32(parsed), nil
 }

@@ -147,69 +147,6 @@ func logWorkflowSemaphoreInfo(runID string) {
 		runID, workflowName, maxRuns, pipelineVersionID, semaphoreName, semaphoreKey)
 }
 
-// ValidateWorkflowParallelismAcrossRuns launches multiple runs for the same pipeline version
-// and asserts that no more than the configured limit are active concurrently.
-func ValidateWorkflowParallelismAcrossRuns(runClient *apiserver.RunClient, testContext *apitests.TestContext, pipelineID string, pipelineVersionID string, experimentID *string, limit int32, maxPipelineWaitTime int) {
-	// Launch (limit + 2) runs to exercise the semaphore.
-	targetRuns := int(limit)
-	runIDs := make([]string, 0, targetRuns)
-	for i := 0; i < targetRuns; i++ {
-		created := e2e_utils.CreatePipelineRun(runClient, testContext, &pipelineID, &pipelineVersionID, experimentID, nil)
-		runIDs = append(runIDs, created.RunID)
-	}
-
-	// Wait a bit for Argo to process the runs and enforce semaphore limits
-	time.Sleep(5 * time.Second)
-
-	timeout := time.Now().Add(time.Duration(maxPipelineWaitTime) * time.Second)
-	pollInterval := 2 * time.Second
-
-	validationPassed := false
-
-	for {
-		active := 0
-		allTerminal := true
-		for _, rid := range runIDs {
-			run := testutil.GetPipelineRun(runClient, &rid)
-			if run.State == nil {
-				active++
-				allTerminal = false
-				continue
-			}
-			switch *run.State {
-			case run_model.V2beta1RuntimeStateRUNNING:
-				// Only count RUNNING as active; PENDING may indicate waiting for semaphore
-				active++
-				allTerminal = false
-			case run_model.V2beta1RuntimeStatePENDING:
-				// PENDING runs might be waiting for semaphore, don't count as active
-				allTerminal = false
-			default:
-				// terminal
-			}
-		}
-		if int32(active) > limit {
-			for _, rid := range runIDs {
-				logWorkflowSemaphoreInfo(rid)
-			}
-		}
-		Expect(active).To(BeNumerically("<=", limit), "Active concurrent runs should respect max_active_runs")
-		if active > 0 {
-			validationPassed = true
-		}
-		if allTerminal {
-			if !validationPassed {
-				Fail("All runs completed before parallelism validation could be performed; runs may have completed too quickly or never started")
-			}
-			return
-		}
-		if time.Now().After(timeout) {
-			Fail(fmt.Sprintf("Timed out waiting for runs to finish; active=%d, limit=%d", active, limit))
-		}
-		time.Sleep(pollInterval)
-	}
-}
-
 // RunInfo tracks run information for parallelism validation
 type RunInfo struct {
 	RunID             string
@@ -695,9 +632,8 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 
 	Context("Recurring run parallelism tests >", Serial, Label(E2eEssential), func() {
 		const (
-			pipelineDir              = "valid"
-			pipelineFile             = "essential/pipeline_with_max_active_runs.yaml"
-			recurringIntervalSeconds = int64(30)
+			pipelineDir  = "valid"
+			pipelineFile = "essential/pipeline_with_max_active_runs.yaml"
 		)
 
 		removeRecurringRunID := func(id string) {
