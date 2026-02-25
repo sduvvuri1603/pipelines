@@ -6,20 +6,45 @@ set -euxo pipefail
 
 NAMESPACE="${1:-${USER_NAMESPACE:-kubeflow-user-example-com}}"
 
+# Wait for profile controller to create the artifact proxy deployment in the user namespace
+echo "Waiting for ml-pipeline-ui-artifact deployment in $NAMESPACE..."
+for i in $(seq 1 30); do
+  if kubectl -n "$NAMESPACE" get deploy ml-pipeline-ui-artifact &>/dev/null; then
+    echo "Deployment found, waiting for rollout..."
+    kubectl -n "$NAMESPACE" rollout status deploy/ml-pipeline-ui-artifact --timeout=120s
+    break
+  fi
+  echo "  attempt $i/30: deployment not yet created, waiting 10s..."
+  sleep 10
+done
+
 # Create curl pod for testing
 kubectl -n "$NAMESPACE" run kfp-proxy-curl --image=curlimages/curl:8.7.1 --restart=Never \
   --annotations="sidecar.istio.io/inject=false" --command -- sleep 3600
 kubectl -n "$NAMESPACE" wait --for=condition=Ready pod/kfp-proxy-curl --timeout=300s
 
-# Test 1: Verify artifact proxy health endpoint
-HEALTH_RESPONSE=$(kubectl -n "$NAMESPACE" exec kfp-proxy-curl -- \
-  curl -fsS -H 'kubeflow-userid: user@example.com' \
-  "http://ml-pipeline-ui-artifact.${NAMESPACE}.svc.cluster.local/apis/v1beta1/healthz")
+# Test 1: Verify artifact proxy health endpoint (with retry for service readiness)
+HEALTH_URL="http://ml-pipeline-ui-artifact.${NAMESPACE}.svc.cluster.local/apis/v1beta1/healthz"
+HEALTH_RESPONSE=""
+for i in $(seq 1 12); do
+  HEALTH_RESPONSE=$(kubectl -n "$NAMESPACE" exec kfp-proxy-curl -- \
+    curl -fsS -H 'kubeflow-userid: user@example.com' "$HEALTH_URL" 2>/dev/null) && break
+  echo "  Health check attempt $i/12 failed, retrying in 10s..."
+  sleep 10
+done
+
+if [ -z "$HEALTH_RESPONSE" ]; then
+  echo "ERROR: artifact proxy health endpoint never became reachable"
+  kubectl -n "$NAMESPACE" get svc ml-pipeline-ui-artifact -o yaml || true
+  kubectl -n "$NAMESPACE" get endpoints ml-pipeline-ui-artifact || true
+  kubectl -n "$NAMESPACE" logs deploy/ml-pipeline-ui-artifact --tail=50 || true
+  exit 1
+fi
 
 if ! echo "$HEALTH_RESPONSE" | grep -q '"apiServerReady":true'; then
   echo "ERROR: apiServerReady=false"
   echo "Response: $HEALTH_RESPONSE"
-  kubectl -n "$NAMESPACE" logs deploy/ml-pipeline-ui-artifact -c ml-pipeline-ui-artifact --tail=50 || true
+  kubectl -n "$NAMESPACE" logs deploy/ml-pipeline-ui-artifact --tail=50 || true
   exit 1
 fi
 
