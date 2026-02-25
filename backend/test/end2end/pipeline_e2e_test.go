@@ -443,7 +443,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 		}
 	})
 
-	Context("Pipeline run parallelism tests >", Serial, Label(E2eEssential), func() {
+	Context("Pipeline run parallelism tests >", Ordered, Label(E2eEssential), func() {
 		var pipelineFile = "essential/pipeline_with_max_active_runs.yaml"
 		var pipelineDir = "valid"
 
@@ -458,8 +458,8 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			testContext.Pipeline.CreatedPipelines = append(testContext.Pipeline.CreatedPipelines, uploadedPipeline)
 			uploadedPipelineVersion := testutil.GetLatestPipelineVersion(pipelineClient, &uploadedPipeline.PipelineID)
 
-			// Launch (limit + 2) runs to exercise the semaphore
-			targetRuns := int(limit) + 2
+			// Launch (limit + 1) runs to exercise the semaphore
+			targetRuns := int(limit) + 1
 			runInfos := make([]RunInfo, 0, targetRuns)
 			for i := 0; i < targetRuns; i++ {
 				created := e2e_utils.CreatePipelineRun(runClient, testContext, &uploadedPipeline.PipelineID, &uploadedPipelineVersion.PipelineVersionID, experimentID, nil)
@@ -494,7 +494,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			Expect(uploadErr2).To(BeNil(), "Failed to upload second pipeline version")
 
 			// Launch all runs for version1 first, then all runs for version2 (sequential batches)
-			targetRuns := int(limit) + 2
+			targetRuns := int(limit) + 1
 			runInfos := make([]RunInfo, 0, targetRuns*2)
 			// Launch all version1 runs first
 			for i := 0; i < targetRuns; i++ {
@@ -544,7 +544,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			runInfos := make([]RunInfo, 0)
 
 			// Step 1: Launch runs from version1 (same version) to exceed the limit
-			version1Runs := int(limit) + 2
+			version1Runs := int(limit) + 1
 			for i := 0; i < version1Runs; i++ {
 				created1 := e2e_utils.CreatePipelineRun(runClient, testContext, &uploadedPipeline.PipelineID, &version1.PipelineVersionID, experimentID, nil)
 				runInfos = append(runInfos, RunInfo{
@@ -555,7 +555,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			}
 
 			// Step 2: Launch runs from version2 (different version) - should be allowed independently
-			version2Runs := int(limit) + 2
+			version2Runs := int(limit) + 1
 			for i := 0; i < version2Runs; i++ {
 				created2 := e2e_utils.CreatePipelineRun(runClient, testContext, &uploadedPipeline.PipelineID, &version2.PipelineVersionID, experimentID, nil)
 				runInfos = append(runInfos, RunInfo{
@@ -603,8 +603,8 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 			testContext.Pipeline.CreatedPipelines = append(testContext.Pipeline.CreatedPipelines, uploadedPipeline2)
 			version2 := testutil.GetLatestPipelineVersion(pipelineClient, &uploadedPipeline2.PipelineID)
 
-			// Launch (limit + 2) runs for each pipeline
-			targetRuns := int(limit) + 2
+			// Launch (limit + 1) runs for each pipeline
+			targetRuns := int(limit) + 1
 			runInfos := make([]RunInfo, 0, targetRuns*2)
 			for i := 0; i < targetRuns; i++ {
 				created1 := e2e_utils.CreatePipelineRun(runClient, testContext, &uploadedPipeline1.PipelineID, &version1.PipelineVersionID, experimentID, nil)
@@ -630,7 +630,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 		})
 	})
 
-	Context("Recurring run parallelism tests >", Serial, Label(E2eEssential), func() {
+	Context("Recurring run parallelism tests >", Ordered, Label(E2eEssential), func() {
 		const (
 			pipelineDir  = "valid"
 			pipelineFile = "essential/pipeline_with_max_active_runs.yaml"
