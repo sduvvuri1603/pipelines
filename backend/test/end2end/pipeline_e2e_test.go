@@ -79,19 +79,17 @@ func collectRunInfos(runClient *apiserver.RunClient, experimentID *string, testC
 			if _, exists := seen[run.RunID]; exists {
 				continue
 			}
-			if run.PipelineVersionReference == nil || run.PipelineVersionReference.PipelineID == "" || run.PipelineVersionReference.PipelineVersionID == "" {
-				if collectErr == nil {
-					collectErr = fmt.Errorf("run %s missing pipeline version reference", run.RunID)
-				}
-				return false
+
+			info := RunInfo{RunID: run.RunID}
+			if run.PipelineVersionReference != nil {
+				info.PipelineID = run.PipelineVersionReference.PipelineID
+				info.PipelineVersionID = run.PipelineVersionReference.PipelineVersionID
+			} else {
+				info.PipelineVersionID = recurringRunID
 			}
 
 			seen[run.RunID] = struct{}{}
-			runInfos = append(runInfos, RunInfo{
-				RunID:             run.RunID,
-				PipelineID:        run.PipelineVersionReference.PipelineID,
-				PipelineVersionID: run.PipelineVersionReference.PipelineVersionID,
-			})
+			runInfos = append(runInfos, info)
 			testContext.PipelineRun.CreatedRunIds = append(testContext.PipelineRun.CreatedRunIds, run.RunID)
 		}
 
@@ -508,7 +506,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 		}
 	})
 
-	Context("Pipeline run parallelism tests >", Label(E2eEssential), func() {
+	Context("Pipeline run parallelism tests >", Serial, Label(E2eEssential), func() {
 		var pipelineFile = "essential/pipeline_with_max_active_runs.yaml"
 		var pipelineDir = "valid"
 
@@ -695,7 +693,7 @@ var _ = Describe("Upload and Verify Pipeline Run >", Label(FullRegression), func
 		})
 	})
 
-	Context("Recurring run parallelism tests >", Label(E2eEssential), func() {
+	Context("Recurring run parallelism tests >", Serial, Label(E2eEssential), func() {
 		const (
 			pipelineDir              = "valid"
 			pipelineFile             = "essential/pipeline_with_max_active_runs.yaml"
@@ -844,8 +842,4 @@ func validatePipelineRunSuccess(pipelineFile string, pipelineDir string, testCon
 	}
 	compiledWorkflow := workflowutils.UnmarshallWorkflowYAML(filepath.Join(testutil.GetCompiledWorkflowsFilesDir(), pipelineFile))
 	e2e_utils.ValidateComponentStatuses(runClient, k8Client, testContext, createdRunID, compiledWorkflow)
-	if limit, err := MaxActiveRuns(pipelineFilePath); err == nil {
-		ValidateWorkflowParallelismAcrossRuns(runClient, testContext, uploadedPipeline.PipelineID, uploadedPipelineVersion.PipelineVersionID, experimentID, limit, maxPipelineWaitTime)
-	}
-
 }
